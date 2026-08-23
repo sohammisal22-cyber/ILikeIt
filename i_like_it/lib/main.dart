@@ -102,39 +102,18 @@ class _ILikeItAppState extends State<ILikeItApp> {
     }
 
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'sharedText') {
-        setState(() {
-          _sharedLink = call.arguments as String?;
-        });
-      } else if (call.method == 'clearSharedLink') {
+      // NOTE: sharedText channel is kept for backward compatibility only.
+      // The new native Share Extension saves links directly via pendingSave.
+      // The FolderScreen checks getPendingSave on resume and processes it there.
+      if (call.method == 'clearSharedLink') {
         setState(() {
           _sharedLink = null;
         });
       }
     });
-
-    // Pull initial shared text in case of cold start
-    _getInitialSharedText();
   }
 
-  Future<void> _getInitialSharedText() async {
-    try {
-      final String? initialText = await _channel.invokeMethod<String>(
-        'getSharedText',
-      );
-      if (initialText != null) {
-        setState(() {
-          _sharedLink = initialText;
-        });
-        // Clear it on the native side so it isn't pulled again on hot restart
-        await _channel.invokeMethod('clearSharedText');
-      }
-    } catch (e) {
-      print('Error getting initial shared text: $e');
-    }
-  }
 
-  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeManager.instance.themeModeNotifier,

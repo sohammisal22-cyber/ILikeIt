@@ -55,6 +55,19 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
     _checkLoginAndProceed();
   }
 
+  Future<void> _closeApp() async {
+    widget.onLinkSaved?.call();
+    const platform = MethodChannel('shared_link');
+    try {
+      await platform.invokeMethod('closeApp');
+    } catch (e) {
+      print('Error closing app: $e');
+    }
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+  }
+
   Future<void> _loadFoldersAndShowSuggestions() async {
     // Check if we extracted a valid URL (should start with http/https)
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
@@ -71,12 +84,7 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
       // Wait for the snackbar to be readable, then close the app
       await Future.delayed(const Duration(seconds: 2));
 
-      const platform = MethodChannel('shared_link');
-      try {
-        await platform.invokeMethod('closeApp');
-      } catch (e) {
-        if (mounted) Navigator.pop(context);
-      }
+      await _closeApp();
       return;
     }
 
@@ -154,12 +162,7 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
       if (selectedFolder == null || !mounted) {
         print('[SHARE_SCREEN] No folder selected or widget unmounted');
         // Close the app if no folder selected
-        const platform = MethodChannel('shared_link');
-        try {
-          await platform.invokeMethod('closeApp');
-        } catch (e) {
-          if (mounted) Navigator.pop(context);
-        }
+        await _closeApp();
         return;
       }
 
@@ -175,14 +178,8 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
 
       if (result == null) {
         print('[SHARE_SCREEN] Edit dialog cancelled');
-        // If cancelled, we arguably should just close the app or return to prev state
-        // For now, let's close the app as this is a "Save" flow interruption
-        const platform = MethodChannel('shared_link');
-        try {
-          await platform.invokeMethod('closeApp');
-        } catch (e) {
-          if (mounted) Navigator.pop(context);
-        }
+        // If cancelled, close the app as this is a "Save" flow interruption
+        await _closeApp();
         return;
       }
 
@@ -318,14 +315,7 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
         if (!mounted) return;
 
         // Close the app using platform channel to return to caller
-        const platform = MethodChannel('shared_link');
-        try {
-          await platform.invokeMethod('closeApp');
-        } catch (e) {
-          print('Error closing app: $e');
-          // Fallback: just pop the navigation
-          if (mounted) Navigator.pop(context);
-        }
+        await _closeApp();
         return;
       }
 
@@ -379,15 +369,7 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
       print('[SHARE_SCREEN] Confetti Popup finished, closing app...');
 
       // Close the app using platform channel to return to caller
-      const platform = MethodChannel('shared_link');
-      try {
-        await platform.invokeMethod('closeApp');
-      } catch (e) {
-        print('Error closing app: $e');
-        // Fallback: clear shared link state and pop navigation
-        widget.onLinkSaved?.call();
-        if (mounted) Navigator.pop(context);
-      }
+      await _closeApp();
     } catch (e, st) {
       print('SAVE FAILED: $e');
       print('$st');
@@ -403,14 +385,7 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
       if (!mounted) return;
 
       // Close the app using platform channel to return to caller
-      const platform = MethodChannel('shared_link');
-      try {
-        await platform.invokeMethod('closeApp');
-      } catch (e) {
-        print('Error closing app: $e');
-        // Fallback: just pop the navigation
-        if (mounted) Navigator.pop(context);
-      }
+      await _closeApp();
     }
   }
 
@@ -461,14 +436,7 @@ class _ShareSaveScreenState extends State<ShareSaveScreen> {
           titleTextStyle: theme.textTheme.headlineSmall?.copyWith(fontSize: 20),
           leading: IconButton(
             icon: const Icon(Icons.close),
-            onPressed: () async {
-              const platform = MethodChannel('shared_link');
-              try {
-                await platform.invokeMethod('closeApp');
-              } catch (e) {
-                if (mounted) Navigator.pop(context);
-              }
-            },
+            onPressed: () => _closeApp(),
           ),
         ),
         body: Center(

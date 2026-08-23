@@ -147,6 +147,7 @@ class _FolderScreenState extends State<FolderScreen>
     if (state == AppLifecycleState.resumed) {
       print('[FOLDER_SCREEN] App resumed, reloading folders...');
       _loadFolders(silent: true);
+      _checkPendingSave();
     }
   }
 
@@ -334,6 +335,96 @@ class _FolderScreenState extends State<FolderScreen>
         _isLoading = false;
       }
     });
+
+    // Sync folder list to App Group so Share Extension can display them
+    _syncFoldersToAppGroup(loadedFolders);
+  }
+
+  /// Serializes folder list to JSON and pushes it to the iOS App Group via platform channel.
+  /// The Share Extension reads this to show folder names without needing the main app open.
+  Future<void> _syncFoldersToAppGroup(List<Folder> folderList) async {
+    try {
+      const channel = MethodChannel('shared_link');
+      final jsonList = folderList
+          .where((f) => f.id != null)
+          .map((f) => {'id': f.id, 'name': f.name, 'icon': f.icon})
+          .toList();
+      final jsonString = jsonList.isNotEmpty
+          ? '[${jsonList.map((m) => '{"id":${m["id"]},"name":"${(m["name"] as String).replaceAll('"', '\\"')}","icon":"${m["icon"]}"}').join(',')}]'
+          : '[]';
+      await channel.invokeMethod('saveFolders', jsonString);
+    } catch (e) {
+      print('[FOLDER_SCREEN] Failed to sync folders to App Group: $e');
+    }
+  }
+
+  /// Called on app resume — checks if Share Extension saved a link directly.
+  /// If yes, inserts it into the correct folder (creating a new folder if requested) and triggers a sync.
+  Future<void> _checkPendingSave() async {
+    try {
+      const channel = MethodChannel('shared_link');
+      final result = await channel.invokeMethod<Map<Object?, Object?>>('getPendingSave');
+      if (result == null) return;
+
+      final link = result['link'] as String?;
+      final folderIdStr = result['folderId'] as String?;
+      if (link == null || link.isEmpty) return;
+
+      // Clear immediately to avoid duplicate processing
+      await channel.invokeMethod('clearPendingSave');
+
+      print('[FOLDER_SCREEN] Processing pending save from Share Extension: $link');
+
+      int? targetFolderId;
+      String targetFolderName = 'Saved Links';
+
+      // Check if user chose to create a new folder from the Share Extension
+      if (folderIdStr != null && folderIdStr.startsWith('new:')) {
+        final newName = folderIdStr.substring(4).trim();
+        if (newName.isNotEmpty) {
+          final newFolderId = await DatabaseHelper.instance.insertFolder({
+            'name': newName,
+            'icon': '0xe3b0',
+          });
+          targetFolderId = newFolderId;
+          targetFolderName = newName;
+          print('[FOLDER_SCREEN] Created new folder from Share Extension: $newName (ID: $newFolderId)');
+        }
+      } else if (folderIdStr != null && folderIdStr.isNotEmpty) {
+        final fid = int.tryParse(folderIdStr);
+        final found = folders.where((f) => f.id == fid).firstOrNull;
+        if (found != null && found.id != null) {
+          targetFolderId = found.id;
+          targetFolderName = found.name;
+        }
+      }
+
+      // Fallback to first existing folder if needed
+      if (targetFolderId == null && folders.isNotEmpty) {
+        targetFolderId = folders.first.id;
+        targetFolderName = folders.first.name;
+      }
+
+      if (targetFolderId == null) return;
+
+      // Save the link
+      await DatabaseHelper.instance.insertLink({
+        'folder_id': targetFolderId,
+        'url': link,
+        'title': Uri.tryParse(link)?.host.replaceAll('www.', '') ?? 'Link',
+        'domain': Uri.tryParse(link)?.host.replaceAll('www.', '') ?? '',
+        'image_url': null,
+        'notes': '',
+      });
+
+      print('[FOLDER_SCREEN] Pending link saved to folder $targetFolderName (ID: $targetFolderId)');
+      _loadFolders(silent: true);
+
+      // Trigger sync
+      SyncManager.instance.pushLocalChanges().catchError((_) {});
+    } catch (e) {
+      print('[FOLDER_SCREEN] Error checking pending save: $e');
+    }
   }
 
   Future<void> _deleteFolder(Folder folder) async {
