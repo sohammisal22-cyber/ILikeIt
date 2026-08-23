@@ -407,21 +407,29 @@ class _FolderScreenState extends State<FolderScreen>
 
       if (targetFolderId == null) return;
 
+      final cleanUrl = MetadataExtractor.extractCleanUrl(link);
+      if (cleanUrl.isEmpty) return;
+
+      final parsedUri = Uri.tryParse(cleanUrl);
+      final domain = parsedUri?.host.replaceAll('www.', '') ?? '';
+      final title = domain.isNotEmpty ? domain : 'Link';
+
       // Save the link
       await DatabaseHelper.instance.insertLink({
         'folder_id': targetFolderId,
-        'url': link,
-        'title': Uri.tryParse(link)?.host.replaceAll('www.', '') ?? 'Link',
-        'domain': Uri.tryParse(link)?.host.replaceAll('www.', '') ?? '',
+        'url': cleanUrl,
+        'title': title,
+        'domain': domain,
         'image_url': null,
         'notes': '',
       });
 
-      print('[FOLDER_SCREEN] Pending link saved to folder $targetFolderName (ID: $targetFolderId)');
+      print('[FOLDER_SCREEN] Pending link saved to folder $targetFolderName (ID: $targetFolderId): $cleanUrl');
       _loadFolders(silent: true);
 
       // Trigger sync
       SyncManager.instance.pushLocalChanges().catchError((_) {});
+
     } catch (e) {
       print('[FOLDER_SCREEN] Error checking pending save: $e');
     }

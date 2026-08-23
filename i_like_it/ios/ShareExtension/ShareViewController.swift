@@ -106,28 +106,89 @@ class ShareViewController: UIViewController {
     // MARK: - URL Extraction
 
     private func extractSharedURL(completion: @escaping (String) -> Void) {
-        guard let items = extensionContext?.inputItems as? [NSExtensionItem] else { completion(""); return }
+        guard let items = extensionContext?.inputItems as? [NSExtensionItem] else {
+            completion("")
+            return
+        }
         var providers: [NSItemProvider] = []
-        for item in items { providers.append(contentsOf: item.attachments ?? []) }
+        for item in items {
+            providers.append(contentsOf: item.attachments ?? [])
+        }
+        guard !providers.isEmpty else {
+            completion("")
+            return
+        }
+
+        let group = DispatchGroup()
+        var foundURL: String? = nil
+
         let urlType = UTType.url.identifier
-        let textType = UTType.plainText.identifier
-        if let p = providers.first(where: { $0.hasItemConformingToTypeIdentifier(urlType) }) {
-            p.loadItem(forTypeIdentifier: urlType, options: nil) { item, _ in
-                if let u = item as? URL { completion(u.absoluteString); return }
-                if let u = item as? NSURL, let s = u.absoluteString { completion(s); return }
-                if let s = item as? String { completion(s); return }
-                completion("")
-            }; return
+        let plainTextType = UTType.plainText.identifier
+        let generalTextType = UTType.text.identifier
+
+        for provider in providers {
+            if foundURL != nil { break }
+
+            if provider.hasItemConformingToTypeIdentifier(urlType) {
+                group.enter()
+                provider.loadItem(forTypeIdentifier: urlType, options: nil) { item, _ in
+                    defer { group.leave() }
+                    if let u = item as? URL {
+                        foundURL = self.cleanURL(from: u.absoluteString)
+                    } else if let u = item as? NSURL, let s = u.absoluteString {
+                        foundURL = self.cleanURL(from: s)
+                    } else if let s = item as? String {
+                        foundURL = self.cleanURL(from: s)
+                    }
+                }
+            }
+
+            if provider.hasItemConformingToTypeIdentifier(plainTextType) || provider.hasItemConformingToTypeIdentifier(generalTextType) {
+                let typeToUse = provider.hasItemConformingToTypeIdentifier(plainTextType) ? plainTextType : generalTextType
+                group.enter()
+                provider.loadItem(forTypeIdentifier: typeToUse, options: nil) { item, _ in
+                    defer { group.leave() }
+                    if let s = item as? String {
+                        let cleaned = self.cleanURL(from: s)
+                        if cleaned.hasPrefix("http://") || cleaned.hasPrefix("https://") {
+                            foundURL = cleaned
+                        } else if foundURL == nil {
+                            foundURL = s
+                        }
+                    } else if let a = item as? NSAttributedString {
+                        let cleaned = self.cleanURL(from: a.string)
+                        if cleaned.hasPrefix("http://") || cleaned.hasPrefix("https://") {
+                            foundURL = cleaned
+                        } else if foundURL == nil {
+                            foundURL = a.string
+                        }
+                    }
+                }
+            }
         }
-        if let p = providers.first(where: { $0.hasItemConformingToTypeIdentifier(textType) }) {
-            p.loadItem(forTypeIdentifier: textType, options: nil) { item, _ in
-                if let s = item as? String { completion(s); return }
-                if let a = item as? NSAttributedString { completion(a.string); return }
-                completion("")
-            }; return
+
+        group.notify(queue: .main) {
+            completion(foundURL ?? "")
         }
-        completion("")
     }
+
+    private func cleanURL(from raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = #"(https?://[^\s]+)"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+           let match = regex.firstMatch(in: trimmed, options: [], range: NSRange(location: 0, length: trimmed.utf16.count)),
+           let range = Range(match.range(at: 1), in: trimmed) {
+            var extracted = String(trimmed[range])
+            while extracted.hasSuffix(".") || extracted.hasSuffix(",") || extracted.hasSuffix("!") ||
+                  extracted.hasSuffix("?") || extracted.hasSuffix(")") || extracted.hasSuffix("]") ||
+                  extracted.hasSuffix(">") || extracted.hasSuffix("\"") || extracted.hasSuffix("'") {
+                extracted.removeLast()
+            }
+            return extracted
+        }
+        return trimmed
+    }
+
 
     // MARK: - Folders
 

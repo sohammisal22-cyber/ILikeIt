@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -13,7 +14,6 @@ import 'features/share/share_save_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/sync/remote_datasource.dart';
 import 'core/sync/sync_manager.dart';
-import 'core/services/folder_classification_service.dart';
 import 'core/database/database_helper.dart';
 
 import 'config/app_config.dart';
@@ -101,19 +101,63 @@ class _ILikeItAppState extends State<ILikeItApp> {
       });
     }
 
-    _channel.setMethodCallHandler((call) async {
-      // NOTE: sharedText channel is kept for backward compatibility only.
-      // The new native Share Extension saves links directly via pendingSave.
-      // The FolderScreen checks getPendingSave on resume and processes it there.
-      if (call.method == 'clearSharedLink') {
-        setState(() {
-          _sharedLink = null;
-        });
-      }
-    });
+    // Android uses MethodChannel sharedText & getSharedText to open ShareSaveScreen
+    if (Platform.isAndroid) {
+      _channel.setMethodCallHandler((call) async {
+        if (call.method == 'sharedText') {
+          final link = call.arguments as String?;
+          if (link != null && link.isNotEmpty) {
+            setState(() {
+              _sharedLink = link;
+            });
+            if (ILikeItApp.navigatorKey.currentState != null && !_showSplash) {
+              ILikeItApp.navigatorKey.currentState!.push(
+                MaterialPageRoute(
+                  builder: (_) => ShareSaveScreen(
+                    sharedLink: link,
+                    onLinkSaved: _clearSharedLink,
+                  ),
+                ),
+              );
+            }
+          }
+        } else if (call.method == 'clearSharedLink') {
+          setState(() {
+            _sharedLink = null;
+          });
+        }
+      });
+
+      _getInitialSharedText();
+    } else {
+      // iOS Share Extension saves links directly via pendingSave
+      _channel.setMethodCallHandler((call) async {
+        if (call.method == 'clearSharedLink') {
+          setState(() {
+            _sharedLink = null;
+          });
+        }
+      });
+    }
   }
 
+  Future<void> _getInitialSharedText() async {
+    try {
+      final String? initialText = await _channel.invokeMethod<String>(
+        'getSharedText',
+      );
+      if (initialText != null && initialText.isNotEmpty) {
+        setState(() {
+          _sharedLink = initialText;
+        });
+        await _channel.invokeMethod('clearSharedText');
+      }
+    } catch (e) {
+      print('Error getting initial shared text: $e');
+    }
+  }
 
+  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: ThemeManager.instance.themeModeNotifier,
@@ -128,6 +172,7 @@ class _ILikeItAppState extends State<ILikeItApp> {
           themeAnimationDuration:
               Duration.zero, // Instant transition as requested
           themeAnimationCurve: Curves.linear,
+          onGenerateRoute: (settings) => null,
           home: _showSplash
               ? CustomSplashScreen(
                   onInitializationComplete: () {
@@ -160,3 +205,4 @@ class _ILikeItAppState extends State<ILikeItApp> {
     });
   }
 }
+
