@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'all_folders_screen.dart';
@@ -285,6 +286,10 @@ class _FolderScreenState extends State<FolderScreen>
         final cleanUrl = MetadataExtractor.extractCleanUrl(widget.sharedLink!);
         _showFolderPicker(cleanUrl);
       });
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkPendingSave();
+      });
     }
   }
 
@@ -375,11 +380,22 @@ class _FolderScreenState extends State<FolderScreen>
 
       print('[FOLDER_SCREEN] Processing pending save from Share Extension: $link');
 
+      // If no target folder was pre-selected (e.g. shared while logged out), prompt folder picker
+      if (folderIdStr == null || folderIdStr.isEmpty) {
+        final cleanUrl = MetadataExtractor.extractCleanUrl(link);
+        if (cleanUrl.isNotEmpty && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showFolderPicker(cleanUrl);
+          });
+        }
+        return;
+      }
+
       int? targetFolderId;
       String targetFolderName = 'Saved Links';
 
       // Check if user chose to create a new folder from the Share Extension
-      if (folderIdStr != null && folderIdStr.startsWith('new:')) {
+      if (folderIdStr.startsWith('new:')) {
         final newName = folderIdStr.substring(4).trim();
         if (newName.isNotEmpty) {
           final newFolderId = await DatabaseHelper.instance.insertFolder({
@@ -390,7 +406,7 @@ class _FolderScreenState extends State<FolderScreen>
           targetFolderName = newName;
           print('[FOLDER_SCREEN] Created new folder from Share Extension: $newName (ID: $newFolderId)');
         }
-      } else if (folderIdStr != null && folderIdStr.isNotEmpty) {
+      } else {
         final fid = int.tryParse(folderIdStr);
         final found = folders.where((f) => f.id == fid).firstOrNull;
         if (found != null && found.id != null) {
@@ -484,6 +500,18 @@ class _FolderScreenState extends State<FolderScreen>
     print('[FOLDER_PICKER] Starting with link: $link');
     // Extract metadata for suggestions
     try {
+      // Ensure folders are loaded from database
+      var currentFolders = folders;
+      if (currentFolders.isEmpty) {
+        final dbResult = await DatabaseHelper.instance.getFolders();
+        if (dbResult.isNotEmpty) {
+          currentFolders = dbResult.map((e) => Folder.fromMap(e)).toList();
+          if (mounted) {
+            setState(() => folders = currentFolders);
+          }
+        }
+      }
+
       print('[FOLDER_PICKER] Extracting metadata and content...');
       final metadata = await MetadataExtractor.extractMetadata(link);
       final title = metadata['title'] ?? '';
@@ -497,8 +525,19 @@ class _FolderScreenState extends State<FolderScreen>
         return;
       }
 
+      // Re-check folders from database if still empty after metadata extraction
+      if (currentFolders.isEmpty) {
+        final dbResult = await DatabaseHelper.instance.getFolders();
+        if (dbResult.isNotEmpty) {
+          currentFolders = dbResult.map((e) => Folder.fromMap(e)).toList();
+          if (mounted) {
+            setState(() => folders = currentFolders);
+          }
+        }
+      }
+
       print(
-        '[FOLDER_PICKER] Showing suggestion dialog with ${folders.length} folders',
+        '[FOLDER_PICKER] Showing suggestion dialog with ${currentFolders.length} folders',
       );
       // Show folder suggestion dialog
       final selectedFolder = await showDialog<Folder>(
@@ -509,7 +548,7 @@ class _FolderScreenState extends State<FolderScreen>
           linkTitle: title,
           linkDescription: description,
           linkContent: content,
-          folders: folders,
+          folders: currentFolders,
         ),
       );
 
@@ -564,11 +603,8 @@ class _FolderScreenState extends State<FolderScreen>
                                 style: AppTheme.bodyLarge,
                               ),
                               onTap: () async {
-                                final navigator = Navigator.of(context);
+                                Navigator.pop(context);
                                 await _saveLinkToFolder(link, folder, link, '');
-                                if (!mounted) return;
-                                navigator.pop();
-                                SystemNavigator.pop();
                               },
                             );
                           },
@@ -617,13 +653,14 @@ class _FolderScreenState extends State<FolderScreen>
         message: 'Your link has been saved successfully',
       );
 
-      // Synch immediately to update active status
+      // Sync immediately to update active status and refresh UI
       SyncManager.instance.sync();
+      _loadFolders(silent: true);
 
-      // Close the app
-      final navigator = Navigator.of(context);
-      navigator.pop(); // closes dialog/sheet
-      SystemNavigator.pop(); // finishes share activity
+      // Only close app if opened as a dedicated standalone share intent on Android
+      if (Platform.isAndroid && widget.sharedLink != null) {
+        SystemNavigator.pop();
+      }
     } catch (e) {
       print('Error saving link: $e');
       if (!mounted) return;

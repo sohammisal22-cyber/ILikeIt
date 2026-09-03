@@ -61,6 +61,10 @@ class ShareViewController: UIViewController {
     private var searchText: String = "" {
         didSet { applyFilter() }
     }
+    private var isLoggedIn: Bool {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return false }
+        return defaults.bool(forKey: "isLoggedIn")
+    }
 
     // MARK: - UI
     private var cardView: UIView!
@@ -77,10 +81,15 @@ class ShareViewController: UIViewController {
         setupDim()
         extractSharedURL { [weak self] url in
             DispatchQueue.main.async {
-                self?.extractedURL = url
-                self?.loadFolders()
-                self?.buildUI()
-                self?.animateIn()
+                guard let self = self else { return }
+                self.extractedURL = url
+                if self.isLoggedIn {
+                    self.loadFolders()
+                    self.buildUI()
+                } else {
+                    self.buildLoggedOutUI()
+                }
+                self.animateIn()
             }
         }
     }
@@ -446,6 +455,132 @@ class ShareViewController: UIViewController {
         return bar
     }
 
+    // MARK: - Logged Out UI
+
+    private func buildLoggedOutUI() {
+        // Card
+        cardView = UIView()
+        cardView.backgroundColor = C.bg
+        cardView.layer.cornerRadius = 20
+        cardView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.5
+        cardView.layer.shadowRadius = 24
+        cardView.layer.shadowOffset = CGSize(width: 0, height: -6)
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(cardView)
+
+        let cardHeight: CGFloat = 340
+
+        cardBottomConstraint = cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: cardHeight)
+        NSLayoutConstraint.activate([
+            cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            cardBottomConstraint,
+            cardView.heightAnchor.constraint(equalToConstant: cardHeight),
+        ])
+        view.layoutIfNeeded()
+
+        // Drag handle
+        let handle = UIView()
+        handle.backgroundColor = UIColor.white.withAlphaComponent(0.18)
+        handle.layer.cornerRadius = 2.5
+        handle.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(handle)
+
+        // Icon circle
+        let iconCircle = UIView()
+        iconCircle.backgroundColor = C.iconBg
+        iconCircle.layer.cornerRadius = 32
+        iconCircle.layer.borderWidth = 1.5
+        iconCircle.layer.borderColor = C.border.cgColor
+        iconCircle.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(iconCircle)
+
+        let lockImage = UIImage(systemName: "lock.shield.fill")?
+            .withRenderingMode(.alwaysTemplate)
+            .withConfiguration(UIImage.SymbolConfiguration(pointSize: 28, weight: .semibold))
+        let lockImageView = UIImageView(image: lockImage)
+        lockImageView.tintColor = C.green
+        lockImageView.contentMode = .scaleAspectFit
+        lockImageView.translatesAutoresizingMaskIntoConstraints = false
+        iconCircle.addSubview(lockImageView)
+
+        // Title
+        let titleLabel = UILabel()
+        titleLabel.text = "Log In to iLikeIt"
+        titleLabel.font = UIFont.systemFont(ofSize: 20, weight: .bold)
+        titleLabel.textColor = C.text
+        titleLabel.textAlignment = .center
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(titleLabel)
+
+        // Subtitle
+        let subtitleLabel = UILabel()
+        subtitleLabel.text = "Please log in to your account to save and organize links into your folders."
+        subtitleLabel.font = UIFont.systemFont(ofSize: 14, weight: .regular)
+        subtitleLabel.textColor = C.subtext
+        subtitleLabel.textAlignment = .center
+        subtitleLabel.numberOfLines = 2
+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(subtitleLabel)
+
+        // Open App Button
+        let openAppBtn = UIButton(type: .system)
+        openAppBtn.setTitle("Open iLikeIt", for: .normal)
+        openAppBtn.setTitleColor(.white, for: .normal)
+        openAppBtn.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        openAppBtn.backgroundColor = C.green
+        openAppBtn.layer.cornerRadius = 14
+        openAppBtn.addTarget(self, action: #selector(openAppTapped), for: .touchUpInside)
+        openAppBtn.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(openAppBtn)
+
+        // Cancel Button
+        let cancelBtn = UIButton(type: .system)
+        cancelBtn.setTitle("Cancel", for: .normal)
+        cancelBtn.setTitleColor(C.subtext, for: .normal)
+        cancelBtn.titleLabel?.font = UIFont.systemFont(ofSize: 15, weight: .medium)
+        cancelBtn.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        cancelBtn.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(cancelBtn)
+
+        NSLayoutConstraint.activate([
+            handle.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 10),
+            handle.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            handle.widthAnchor.constraint(equalToConstant: 36),
+            handle.heightAnchor.constraint(equalToConstant: 4),
+
+            iconCircle.topAnchor.constraint(equalTo: handle.bottomAnchor, constant: 18),
+            iconCircle.centerXAnchor.constraint(equalTo: cardView.centerXAnchor),
+            iconCircle.widthAnchor.constraint(equalToConstant: 64),
+            iconCircle.heightAnchor.constraint(equalToConstant: 64),
+
+            lockImageView.centerXAnchor.constraint(equalTo: iconCircle.centerXAnchor),
+            lockImageView.centerYAnchor.constraint(equalTo: iconCircle.centerYAnchor),
+            lockImageView.widthAnchor.constraint(equalToConstant: 30),
+            lockImageView.heightAnchor.constraint(equalToConstant: 30),
+
+            titleLabel.topAnchor.constraint(equalTo: iconCircle.bottomAnchor, constant: 14),
+            titleLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 24),
+            titleLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -24),
+
+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+            subtitleLabel.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 32),
+            subtitleLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -32),
+
+            openAppBtn.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 20),
+            openAppBtn.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 24),
+            openAppBtn.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -24),
+            openAppBtn.heightAnchor.constraint(equalToConstant: 48),
+
+            cancelBtn.topAnchor.constraint(equalTo: openAppBtn.bottomAnchor, constant: 6),
+            cancelBtn.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 24),
+            cancelBtn.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -24),
+            cancelBtn.heightAnchor.constraint(equalToConstant: 38),
+        ])
+    }
+
     // MARK: - Animation
 
     private func animateIn() {
@@ -459,8 +594,8 @@ class ShareViewController: UIViewController {
 
     private func animateOut(then done: @escaping () -> Void) {
         searchField?.resignFirstResponder()
-        let h = view.bounds.height * 0.82
-        cardBottomConstraint.constant = h
+        let h = view.bounds.height
+        cardBottomConstraint?.constant = h
         UIView.animate(withDuration: 0.28, delay: 0, options: .curveEaseIn, animations: {
             self.view.layoutIfNeeded()
             self.dimView.backgroundColor = UIColor.black.withAlphaComponent(0)
@@ -484,6 +619,22 @@ class ShareViewController: UIViewController {
     }
 
     // MARK: - Actions
+
+    @objc private func openAppTapped() {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return }
+        if !extractedURL.isEmpty {
+            defaults.set(extractedURL, forKey: sharedKey)
+            defaults.set(extractedURL, forKey: pendingLink)
+            defaults.set("", forKey: pendingFolderId)
+            defaults.synchronize()
+        }
+        tryOpenMainApp()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            self?.animateOut {
+                self?.extensionContext?.completeRequest(returningItems: [])
+            }
+        }
+    }
 
     @objc private func bgTapped() {
         animateOut { self.extensionContext?.completeRequest(returningItems: []) }
@@ -541,10 +692,27 @@ class ShareViewController: UIViewController {
 
     private func tryOpenMainApp() {
         guard let url = URL(string: customURLScheme) else { return }
-        extensionContext?.open(url, completionHandler: nil)
-        var r: UIResponder? = self
-        let s = sel_registerName("openURL:")
-        while let rr = r { if rr.responds(to: s) { _ = rr.perform(s, with: url); break }; r = rr.next }
+        
+        // Method 1: Public extensionContext open
+        self.extensionContext?.open(url, completionHandler: nil)
+        
+        // Method 2: UIResponder chain with openURL: (1 argument)
+        var responder: UIResponder? = self
+        let openURLSelector = sel_registerName("openURL:")
+        while let r = responder {
+            if r.responds(to: openURLSelector) {
+                _ = r.perform(openURLSelector, with: url)
+                break
+            }
+            responder = r.next
+        }
+        
+        // Method 3: extensionContext with openURL:completionHandler: with ObjC Block
+        let contextSelector = sel_registerName("openURL:completionHandler:")
+        if let context = self.extensionContext, context.responds(to: contextSelector) {
+            let block: @convention(block) (Bool) -> Void = { _ in }
+            _ = context.perform(contextSelector, with: url, with: unsafeBitCast(block, to: AnyObject.self))
+        }
     }
 
     // MARK: - Success
@@ -559,7 +727,6 @@ class ShareViewController: UIViewController {
 
         // Shrink card
         cardBottomConstraint.constant = 0
-        let smallHeight = view.bounds.height * 0.82
         cardView.constraints.first { $0.firstAttribute == .height }?.constant = 220
         UIView.animate(withDuration: 0.3, delay: 0,
                        usingSpringWithDamping: 0.8, initialSpringVelocity: 0) {

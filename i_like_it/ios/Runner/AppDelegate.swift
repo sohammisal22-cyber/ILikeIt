@@ -14,13 +14,6 @@ import UIKit
   ) -> Bool {
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
-    // Clear any stale sharedText left from previous app builds
-    // (old flow used this key; new native Share Extension uses pendingSaveLink instead)
-    if let defaults = UserDefaults(suiteName: APP_GROUP) {
-      defaults.removeObject(forKey: SHARED_KEY)
-      defaults.synchronize()
-    }
-
     if methodChannel == nil, let controller = window?.rootViewController as? FlutterViewController {
       setupChannel(messenger: controller.binaryMessenger)
     }
@@ -60,14 +53,36 @@ import UIKit
         // Flutter sends a JSON string of folders so the Share Extension can display them
         if let jsonString = call.arguments as? String {
           defaults?.set(jsonString, forKey: "cachedFolders")
+          defaults?.set(true, forKey: "isLoggedIn")
           defaults?.synchronize()
         }
         result(nil)
+      case "setAuthState":
+        if let isLoggedIn = call.arguments as? Bool {
+          defaults?.set(isLoggedIn, forKey: "isLoggedIn")
+          if !isLoggedIn {
+            defaults?.removeObject(forKey: "cachedFolders")
+            defaults?.removeObject(forKey: "pendingSaveLink")
+            defaults?.removeObject(forKey: "pendingSaveFolderId")
+            defaults?.removeObject(forKey: "pendingNewFolderName")
+          }
+          defaults?.synchronize()
+        }
+        result(nil)
+      case "clearUserData":
+        defaults?.removeObject(forKey: "cachedFolders")
+        defaults?.removeObject(forKey: "pendingSaveLink")
+        defaults?.removeObject(forKey: "pendingSaveFolderId")
+        defaults?.removeObject(forKey: "pendingNewFolderName")
+        defaults?.removeObject(forKey: self.SHARED_KEY)
+        defaults?.set(false, forKey: "isLoggedIn")
+        defaults?.synchronize()
+        result(nil)
       case "getPendingSave":
         // Share Extension may save a link directly; main app retrieves it here
-        let pending = defaults?.string(forKey: "pendingSaveLink")
+        let pending = defaults?.string(forKey: "pendingSaveLink") ?? defaults?.string(forKey: self.SHARED_KEY)
         let pendingFolder = defaults?.string(forKey: "pendingSaveFolderId")
-        if let link = pending {
+        if let link = pending, !link.isEmpty {
           result(["link": link, "folderId": pendingFolder ?? ""])
         } else {
           result(nil)
@@ -75,6 +90,7 @@ import UIKit
       case "clearPendingSave":
         defaults?.removeObject(forKey: "pendingSaveLink")
         defaults?.removeObject(forKey: "pendingSaveFolderId")
+        defaults?.removeObject(forKey: self.SHARED_KEY)
         defaults?.synchronize()
         result(nil)
       default:

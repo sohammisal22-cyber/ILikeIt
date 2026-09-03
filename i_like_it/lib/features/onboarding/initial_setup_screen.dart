@@ -900,9 +900,13 @@ class _InitialSetupScreenState extends State<InitialSetupScreen> {
           );
         }).catchError((_) {});
 
-        // Trigger sync since user is now logged in
+        // Trigger and await sync so folders are populated before navigating
         SyncManager.instance.resetUserCreated();
-        SyncManager.instance.sync();
+        try {
+          await SyncManager.instance.sync();
+        } catch (e) {
+          print('[INITIAL_SETUP] Sync warning on login: $e');
+        }
 
         if (mounted) {
           Navigator.of(context).pushReplacement(
