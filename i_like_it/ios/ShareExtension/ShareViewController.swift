@@ -46,7 +46,7 @@ private enum C {
 class ShareViewController: UIViewController {
 
     // MARK: - Constants
-    private let appGroup        = "group.com.ilikeit.app"
+    private let appGroup        = "group.com.ilikeit.app.shreeyash"
     private let sharedKey       = "sharedText"
     private let foldersKey      = "cachedFolders"
     private let pendingLink     = "pendingSaveLink"

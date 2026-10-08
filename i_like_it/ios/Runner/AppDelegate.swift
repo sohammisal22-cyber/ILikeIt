@@ -4,7 +4,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private let CHANNEL = "shared_link"
-  private let APP_GROUP = "group.com.ilikeit.app"
+  private let APP_GROUP = "group.com.ilikeit.app.shreeyash"
   private let SHARED_KEY = "sharedText"
   private var methodChannel: FlutterMethodChannel?
 
