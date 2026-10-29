@@ -1,7 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 
 class UrlUtils {
+  /// Safely share a URL on iOS and other platforms.
+  /// Computes sharePositionOrigin for iOS/iPad UIPopoverPresentationController to prevent crashes,
+  /// and passes Uri so iOS recognizes it as a real URL rather than plain text.
+  static Future<void> shareLink(BuildContext context, String url) async {
+    String cleanUrl = url.trim();
+    if (cleanUrl.isEmpty) return;
+
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = 'https://$cleanUrl';
+    }
+
+    // iOS/iPad requires a non-nil sharePositionOrigin for UIPopoverPresentationController
+    Rect? sharePositionOrigin;
+    try {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        sharePositionOrigin = box.localToGlobal(Offset.zero) & box.size;
+      }
+    } catch (_) {}
+
+    // Fallback origin to the center of the screen
+    if (sharePositionOrigin == null || sharePositionOrigin.isEmpty) {
+      try {
+        final size = MediaQuery.of(context).size;
+        sharePositionOrigin = Rect.fromCenter(
+          center: Offset(size.width / 2, size.height / 2),
+          width: 10,
+          height: 10,
+        );
+      } catch (_) {}
+    }
+
+    await Share.share(
+      cleanUrl,
+      sharePositionOrigin: sharePositionOrigin,
+    );
+  }
   static Future<void> launchBrowserOrApp(
     BuildContext context,
     String url,

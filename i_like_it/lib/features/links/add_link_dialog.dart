@@ -19,15 +19,24 @@ class AddLinkDialog extends StatefulWidget {
 class _AddLinkDialogState extends State<AddLinkDialog> {
   final _controller = TextEditingController();
   bool _saving = false;
+  String? _errorMessage;
+
+  void _showError(String message) {
+    setState(() => _errorMessage = message);
+  }
+
+  void _clearError() {
+    if (_errorMessage != null) setState(() => _errorMessage = null);
+  }
 
   Future<void> _saveLink() async {
     print('[ADD_LINK] _saveLink called');
+    _clearError();
+
     var url = _controller.text.trim();
 
     if (!url.startsWith('http')) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Enter a valid URL')));
+      _showError('Enter a valid URL starting with http:// or https://');
       return;
     }
 
@@ -61,11 +70,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     if (isDuplicate) {
       print('[ADD_LINK] Duplicate detected! Not saving.');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('This link already exists in this folder'),
-        ),
-      );
+      _showError('This link already exists in this folder');
       return;
     }
 
@@ -97,6 +102,12 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
         builder: (context) => _DetailsDialog(initialTitle: title),
       );
 
+      // User cancelled the details dialog
+      if (details == null) {
+        if (mounted) setState(() => _saving = false);
+        return;
+      }
+
       // Check again for duplicates before inserting (in case dialog took a long time)
       final duplicateCheck = await db.query(
         'links',
@@ -117,15 +128,12 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
           return;
         }
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This link was already saved')),
-        );
-        if (mounted) Navigator.pop(context);
+        _showError('This link was already saved');
         return;
       }
 
-      final finalTitle = details?['title'] ?? title;
-      final notes = details?['notes'] ?? '';
+      final finalTitle = details['title'] ?? title;
+      final notes = details['notes'] ?? '';
 
       final link = LinkItem(
         folderId: widget.folderId,
@@ -147,12 +155,7 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
             return;
           }
           setState(() => _saving = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('This link already exists in this folder'),
-            ),
-          );
-          if (mounted) Navigator.pop(context);
+          _showError('This link already exists in this folder');
           return;
         }
         rethrow;
@@ -175,24 +178,17 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
       // Handle duplicate constraint errors
       if (e is DatabaseException &&
           e.toString().contains('UNIQUE constraint failed')) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('This link already exists in this folder'),
-          ),
-        );
+        _showError('This link already exists in this folder');
       } else {
         String displayError = 'Failed to save link. Please try again.';
         final lowerMsg = e.toString().toLowerCase();
-        if (!lowerMsg.contains('exception') && 
-            !lowerMsg.contains('api key') && 
-            !lowerMsg.contains('socket') && 
+        if (!lowerMsg.contains('exception') &&
+            !lowerMsg.contains('api key') &&
+            !lowerMsg.contains('socket') &&
             !lowerMsg.contains('supabase')) {
           displayError = 'Failed to save link: $e';
         }
-        
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(displayError)));
+        _showError(displayError);
       }
     }
   }
@@ -233,55 +229,86 @@ class _AddLinkDialogState extends State<AddLinkDialog> {
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
       child: AlertDialog(
-      title: const Text('Add Link'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        style: inputStyle,
-        decoration: InputDecoration(
-          hintText: 'Paste link here',
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.borderColor),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.borderColor),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(
-              color: AppTheme.primaryColor,
-              width: 2,
-            ),
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 14,
-          ),
-        ),
-        onSubmitted: (_) => _saveLink(),
-      ),
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: _saving ? null : _saveLink,
-          child: _saving
-              ? const SizedBox(
-                  height: 16,
-                  width: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(Colors.white),
+        title: const Text('Add Link'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              style: inputStyle,
+              onChanged: (_) => _clearError(),
+              decoration: InputDecoration(
+                hintText: 'Paste link here',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: _errorMessage != null ? Colors.red : AppTheme.borderColor,
                   ),
-                )
-              : const Text('Save'),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: _errorMessage != null ? Colors.red : AppTheme.borderColor,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: _errorMessage != null ? Colors.red : AppTheme.primaryColor,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+              onSubmitted: (_) => _saveLink(),
+            ),
+            // Inline error message - always visible inside the dialog
+            if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
-      ],
-    ));
+        actions: [
+          TextButton(
+            onPressed: _saving ? null : () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: _saving ? null : _saveLink,
+            child: _saving
+                ? const SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                    ),
+                  )
+                : const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -298,11 +325,12 @@ class _DetailsDialogState extends State<_DetailsDialog> {
   late TextEditingController _titleController;
   late TextEditingController _notesController;
   late final bool _isGeneric;
+  String? _errorMessage;
 
   bool _isGenericTitle(String title) {
     final t = title.toLowerCase().trim();
-    return t == 'instagram - reel' || 
-           t == 'instagram link' || 
+    return t == 'instagram - reel' ||
+           t == 'instagram link' ||
            t == 'instagram' ||
            t == 'instagram- reel' ||
            t == 'shared link' ||
@@ -341,120 +369,143 @@ class _DetailsDialogState extends State<_DetailsDialog> {
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
       child: AlertDialog(
-      title: const Text('Link Details'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Add a meaningful title to search and find your saved link easily in the future.',
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? Colors.white70 : AppTheme.textSecondary,
-                height: 1.3,
+        title: const Text('Link Details'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Add a meaningful title to search and find your saved link easily in the future.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDark ? Colors.white70 : AppTheme.textSecondary,
+                  height: 1.3,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Title',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _titleController,
-              autofocus: true,
-              style: inputStyle,
-              decoration: InputDecoration(
-                hintText: 'Enter link title',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.borderColor),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.borderColor),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: AppTheme.primaryColor,
-                    width: 2,
+              const SizedBox(height: 16),
+              const Text(
+                'Title',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _titleController,
+                autofocus: true,
+                style: inputStyle,
+                onChanged: (_) {
+                  if (_errorMessage != null) setState(() => _errorMessage = null);
+                },
+                decoration: InputDecoration(
+                  hintText: 'Enter link title',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: _errorMessage != null ? Colors.red : AppTheme.borderColor,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: _errorMessage != null ? Colors.red : AppTheme.borderColor,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: _errorMessage != null ? Colors.red : AppTheme.primaryColor,
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 12,
                   ),
                 ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Notes (Optional)',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _notesController,
-              maxLines: 3,
-              style: inputStyle,
-              decoration: InputDecoration(
-                hintText:
-                    'Add your notes... (e.g., "Funny cat video", "Read later")',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.borderColor),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.borderColor),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: AppTheme.primaryColor,
-                    width: 2,
+              // Inline error for title field
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.red, size: 15),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                contentPadding: const EdgeInsets.all(12),
+              const SizedBox(height: 16),
+              const Text(
+                'Notes (Optional)',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
               ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        if (!_isGeneric)
-          TextButton(
-            onPressed: () => Navigator.pop(context, {
-              'title': widget.initialTitle,
-              'notes': '',
-            }),
-            child: const Text('Skip'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _notesController,
+                maxLines: 3,
+                style: inputStyle,
+                decoration: InputDecoration(
+                  hintText:
+                      'Add your notes... (e.g., "Funny cat video", "Read later")',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.borderColor),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppTheme.borderColor),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: AppTheme.primaryColor,
+                      width: 2,
+                    ),
+                  ),
+                  contentPadding: const EdgeInsets.all(12),
+                ),
+              ),
+            ],
           ),
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
         ),
-        ElevatedButton(
-          onPressed: () {
-            final title = _titleController.text.trim();
-            if (title.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Please enter a title to save this link'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-              return;
-            }
-            Navigator.pop(context, {
-              'title': title,
-              'notes': _notesController.text.trim(),
-            });
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    ));
+        actions: [
+          if (!_isGeneric)
+            TextButton(
+              onPressed: () => Navigator.pop(context, {
+                'title': widget.initialTitle,
+                'notes': '',
+              }),
+              child: const Text('Skip'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final title = _titleController.text.trim();
+              if (title.isEmpty) {
+                setState(() => _errorMessage = 'Please enter a title to save this link');
+                return;
+              }
+              Navigator.pop(context, {
+                'title': title,
+                'notes': _notesController.text.trim(),
+              });
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 }

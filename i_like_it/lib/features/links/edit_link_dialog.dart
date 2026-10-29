@@ -17,6 +17,7 @@ class _EditLinkDialogState extends State<EditLinkDialog> {
   late TextEditingController _titleController;
   late TextEditingController _notesController;
   bool _isSaving = false;
+  String? _errorMessage;
 
   @override
   void initState() {
@@ -37,11 +38,10 @@ class _EditLinkDialogState extends State<EditLinkDialog> {
     final notes = _notesController.text.trim();
 
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link name cannot be empty')),
-      );
+      setState(() => _errorMessage = 'Link name cannot be empty');
       return;
     }
+    setState(() => _errorMessage = null);
 
     setState(() => _isSaving = true);
 
@@ -83,20 +83,27 @@ class _EditLinkDialogState extends State<EditLinkDialog> {
               controller: _titleController,
               autofocus: true,
               style: inputStyle,
+              onChanged: (_) {
+                if (_errorMessage != null) setState(() => _errorMessage = null);
+              },
               decoration: InputDecoration(
                 hintText: 'Link title',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.borderColor),
+                  borderSide: BorderSide(
+                    color: _errorMessage != null ? Colors.red : AppTheme.borderColor,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.borderColor),
+                  borderSide: BorderSide(
+                    color: _errorMessage != null ? Colors.red : AppTheme.borderColor,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: AppTheme.primaryColor,
+                  borderSide: BorderSide(
+                    color: _errorMessage != null ? Colors.red : AppTheme.primaryColor,
                     width: 2,
                   ),
                 ),
@@ -106,6 +113,22 @@ class _EditLinkDialogState extends State<EditLinkDialog> {
                 ),
               ),
             ),
+            if (_errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 15),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 16),
             Text(
               'Notes',

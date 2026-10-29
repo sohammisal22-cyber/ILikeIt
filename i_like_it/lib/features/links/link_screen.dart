@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/utils/metadata_extractor.dart';
 import '../../core/utils/url_utils.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../core/database/database_helper.dart';
 import '../../core/models/link_model.dart';
 import 'add_link_dialog.dart';
@@ -615,7 +614,7 @@ class _LinkScreenState extends State<LinkScreen> {
                               await _deleteLink(link);
                               SyncManager.instance.sync();
                             } else if (value == 'share') {
-                              Share.share(link.url);
+                              UrlUtils.shareLink(context, link.url);
                             }
                           },
                         ),

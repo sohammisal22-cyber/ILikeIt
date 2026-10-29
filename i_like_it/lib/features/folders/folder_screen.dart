@@ -27,7 +27,6 @@ import '../profile/profile_screen.dart';
 import '../../core/models/link_model.dart';
 import '../links/link_card.dart';
 import 'all_saves_screen.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../core/utils/url_utils.dart';
 import '../links/edit_link_dialog.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -1078,7 +1077,7 @@ class _FolderScreenState extends State<FolderScreen>
                         ],
                         onSelected: (value) async {
                           if (value == 'share') {
-                            Share.share(link.url);
+                            UrlUtils.shareLink(context, link.url);
                           } else if (value == 'edit') {
                             final edited = await showDialog<bool>(
                               context: context,

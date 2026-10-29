@@ -3,7 +3,6 @@ import '../../core/database/database_helper.dart';
 import '../../core/models/link_model.dart';
 import '../../core/utils/metadata_extractor.dart';
 import '../../core/utils/url_utils.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../core/widgets/gradient_scaffold.dart';
 import '../links/link_card.dart';
 import '../links/edit_link_dialog.dart';
@@ -194,7 +193,7 @@ class _AllSavesScreenState extends State<AllSavesScreen> {
                         ],
                         onSelected: (value) async {
                           if (value == 'share') {
-                            Share.share(link.url);
+                            UrlUtils.shareLink(context, link.url);
                           } else if (value == 'edit') {
                             final edited = await showDialog<bool>(
                               context: context,
